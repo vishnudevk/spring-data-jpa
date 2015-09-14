@@ -21,13 +21,14 @@ import org.springframework.data.jpa.domain.sample.MailMessage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.querydsl.QueryDslPredicateExecutor;
 
-import com.mysema.query.types.OrderSpecifier;
-import com.mysema.query.types.Predicate;
+import com.querydsl.core.types.OrderSpecifier;
+import com.querydsl.core.types.Predicate;
 
 /**
  * @author Thomas Darimont
  */
-public interface MailMessageRepository extends JpaRepository<MailMessage, Long>, QueryDslPredicateExecutor<MailMessage> {
+public interface MailMessageRepository
+		extends JpaRepository<MailMessage, Long>, QueryDslPredicateExecutor<MailMessage> {
 
 	List<MailMessage> findAll(Predicate predicate, OrderSpecifier<?>... orders);
 }

@@ -42,7 +42,7 @@ import org.springframework.data.jpa.repository.support.JpaEntityInformation;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 
 /**
- * Integratio test for lock support.
+ * Integration test for lock support.
  * 
  * @author Oliver Gierke
  * @author Thomas Darimont

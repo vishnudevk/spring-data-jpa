@@ -139,7 +139,7 @@ public class QueryDslRepositorySupportTests {
 
 		public List<User> findUsersByLastname(String lastname) {
 
-			return from(user).where(user.lastname.eq(lastname)).list(user);
+			return from(user).where(user.lastname.eq(lastname)).fetch();
 		}
 
 		public long updateLastnamesTo(String lastname) {

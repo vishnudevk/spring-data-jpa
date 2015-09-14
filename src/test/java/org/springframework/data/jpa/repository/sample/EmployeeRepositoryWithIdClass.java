@@ -23,8 +23,8 @@ import org.springframework.data.jpa.domain.sample.IdClassExampleEmployeePK;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.querydsl.QueryDslPredicateExecutor;
 
-import com.mysema.query.types.OrderSpecifier;
-import com.mysema.query.types.Predicate;
+import com.querydsl.core.types.OrderSpecifier;
+import com.querydsl.core.types.Predicate;
 
 /**
  * Demonstrates the support for composite primary keys with {@code @IdClass}.
