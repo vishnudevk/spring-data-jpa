@@ -17,6 +17,7 @@ package org.springframework.data.jpa.repository.query;
 
 import static org.springframework.data.jpa.repository.query.QueryUtils.*;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -26,10 +27,12 @@ import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Expression;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
+import javax.persistence.criteria.Selection;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.query.ParameterMetadataProvider.ParameterMetadata;
 import org.springframework.data.mapping.PropertyPath;
+import org.springframework.data.repository.query.ReturnedType;
 import org.springframework.data.repository.query.parser.AbstractQueryCreator;
 import org.springframework.data.repository.query.parser.Part;
 import org.springframework.data.repository.query.parser.Part.Type;
@@ -41,12 +44,13 @@ import org.springframework.util.Assert;
  * 
  * @author Oliver Gierke
  */
-public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>, Predicate> {
+public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<? extends Object>, Predicate> {
 
 	private final CriteriaBuilder builder;
 	private final Root<?> root;
-	private final CriteriaQuery<Object> query;
+	private final CriteriaQuery<? extends Object> query;
 	private final ParameterMetadataProvider provider;
+	private final ReturnedType returnedType;
 
 	/**
 	 * Create a new {@link JpaQueryCreator}.
@@ -56,15 +60,21 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 	 * @param accessor
 	 * @param em
 	 */
-	public JpaQueryCreator(PartTree tree, Class<?> domainClass, CriteriaBuilder builder,
+	public JpaQueryCreator(PartTree tree, ReturnedType type, CriteriaBuilder builder,
 			ParameterMetadataProvider provider) {
 
 		super(tree);
 
+		Class<?> typeToRead = type.getTypeToRead();
+
+		CriteriaQuery<? extends Object> criteriaQuery = typeToRead == null ? builder.createTupleQuery()
+				: builder.createQuery(typeToRead);
+
 		this.builder = builder;
-		this.query = builder.createQuery().distinct(tree.isDistinct());
-		this.root = query.from(domainClass);
+		this.query = criteriaQuery.distinct(tree.isDistinct());
+		this.root = query.from(type.getDomainType());
 		this.provider = provider;
+		this.returnedType = type;
 	}
 
 	/**
@@ -92,7 +102,6 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 	 */
 	@Override
 	protected Predicate and(Part part, Predicate base, Iterator<Object> iterator) {
-
 		return builder.and(base, toPredicate(part, root));
 	}
 
@@ -102,7 +111,6 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 	 */
 	@Override
 	protected Predicate or(Predicate base, Predicate predicate) {
-
 		return builder.or(base, predicate);
 	}
 
@@ -112,8 +120,7 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 	 * and {@link CriteriaBuilder}.
 	 */
 	@Override
-	protected final CriteriaQuery<Object> complete(Predicate predicate, Sort sort) {
-
+	protected final CriteriaQuery<? extends Object> complete(Predicate predicate, Sort sort) {
 		return complete(predicate, sort, query, builder, root);
 	}
 
@@ -127,10 +134,24 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 	 * @param builder
 	 * @return
 	 */
-	protected CriteriaQuery<Object> complete(Predicate predicate, Sort sort, CriteriaQuery<Object> query,
-			CriteriaBuilder builder, Root<?> root) {
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	protected CriteriaQuery<? extends Object> complete(Predicate predicate, Sort sort,
+			CriteriaQuery<? extends Object> query, CriteriaBuilder builder, Root<?> root) {
 
-		CriteriaQuery<Object> select = this.query.select(root).orderBy(QueryUtils.toOrders(sort, root, builder));
+		if (returnedType.needsCustomConstruction()) {
+
+			List<Selection<?>> selections = new ArrayList<Selection<?>>();
+
+			for (String property : returnedType.getInputProperties()) {
+				selections.add(root.get(property).alias(property));
+			}
+
+			query = query.multiselect(selections);
+		} else {
+			query = query.select((Root) root);
+		}
+
+		CriteriaQuery<? extends Object> select = query.orderBy(QueryUtils.toOrders(sort, root, builder));
 		return predicate == null ? select : select.where(predicate);
 	}
 
@@ -205,17 +226,17 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 					return builder.between(getComparablePath(root, part), first.getExpression(), second.getExpression());
 				case AFTER:
 				case GREATER_THAN:
-					return builder.greaterThan(getComparablePath(root, part), provider.next(part, Comparable.class)
-							.getExpression());
+					return builder.greaterThan(getComparablePath(root, part),
+							provider.next(part, Comparable.class).getExpression());
 				case GREATER_THAN_EQUAL:
-					return builder.greaterThanOrEqualTo(getComparablePath(root, part), provider.next(part, Comparable.class)
-							.getExpression());
+					return builder.greaterThanOrEqualTo(getComparablePath(root, part),
+							provider.next(part, Comparable.class).getExpression());
 				case BEFORE:
 				case LESS_THAN:
 					return builder.lessThan(getComparablePath(root, part), provider.next(part, Comparable.class).getExpression());
 				case LESS_THAN_EQUAL:
-					return builder.lessThanOrEqualTo(getComparablePath(root, part), provider.next(part, Comparable.class)
-							.getExpression());
+					return builder.lessThanOrEqualTo(getComparablePath(root, part),
+							provider.next(part, Comparable.class).getExpression());
 				case IS_NULL:
 					return path.isNull();
 				case IS_NOT_NULL:
@@ -242,8 +263,8 @@ public class JpaQueryCreator extends AbstractQueryCreator<CriteriaQuery<Object>,
 					return builder.isFalse(falsePath);
 				case SIMPLE_PROPERTY:
 					ParameterMetadata<Object> expression = provider.next(part);
-					return expression.isIsNullParameter() ? path.isNull() : builder.equal(upperIfIgnoreCase(path),
-							upperIfIgnoreCase(expression.getExpression()));
+					return expression.isIsNullParameter() ? path.isNull()
+							: builder.equal(upperIfIgnoreCase(path), upperIfIgnoreCase(expression.getExpression()));
 				case NEGATING_SIMPLE_PROPERTY:
 					return builder.notEqual(upperIfIgnoreCase(path), upperIfIgnoreCase(provider.next(part).getExpression()));
 				default:
